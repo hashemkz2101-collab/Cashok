@@ -45,13 +45,11 @@ jobs:
 
   windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v4
       - name: Unzip app
         id: src
+        shell: bash
         run: |
           set -e
           Z=$(ls -1 *.zip | head -n1); echo "zip: $Z"
@@ -63,6 +61,7 @@ jobs:
         with: { channel: stable, cache: true }
       - name: Generate Windows project
         working-directory: ${{ steps.src.outputs.dir }}
+        shell: bash
         run: |
           flutter create . --platforms=windows --org ir.banzel --project-name banzel_app
           cp app_src/main.dart lib/main.dart
@@ -72,6 +71,7 @@ jobs:
         working-directory: ${{ steps.src.outputs.dir }}
         env:
           CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        shell: pwsh
         run: |
           flutter pub get
           flutter build windows --release
