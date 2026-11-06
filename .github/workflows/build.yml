@@ -1,0 +1,81 @@
+name: Build Kashvak Doch (Android + Windows)
+
+# فایل zip برنامه (banzel_app.zip) را در ریشه‌ی مخزن بگذارید؛ گیت‌هاب خودش آن را باز و بیلد می‌کند.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+    paths: ['*.zip', '.github/workflows/build.yml']
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip app
+        id: src
+        run: |
+          set -e
+          Z=$(ls -1 *.zip | head -n1); echo "zip: $Z"
+          mkdir -p _src && unzip -q -o "$Z" -d _src
+          P=$(find _src -name pubspec.yaml -not -path '*/.*' | head -n1)
+          [ -n "$P" ] || { echo "pubspec.yaml داخل zip پیدا نشد"; exit 1; }
+          echo "dir=$(dirname "$P")" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: '17' }
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Generate Android project
+        working-directory: ${{ steps.src.outputs.dir }}
+        run: |
+          flutter create . --platforms=android --org ir.banzel --project-name banzel_app
+          cp app_src/main.dart lib/main.dart
+          M=android/app/src/main/AndroidManifest.xml
+          sed -i '0,/<application/s//<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' $M
+          sed -i 's/android:label="[^"]*"/android:label="کشوک دوچ"/' $M
+      - name: Build APK
+        working-directory: ${{ steps.src.outputs.dir }}
+        run: |
+          flutter pub get
+          flutter build apk --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: ${{ steps.src.outputs.dir }}/build/app/outputs/flutter-apk/app-release.apk
+
+  windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Unzip app
+        id: src
+        run: |
+          set -e
+          Z=$(ls -1 *.zip | head -n1); echo "zip: $Z"
+          mkdir -p _src && unzip -q -o "$Z" -d _src
+          P=$(find _src -name pubspec.yaml -not -path '*/.*' | head -n1)
+          [ -n "$P" ] || { echo "pubspec.yaml داخل zip پیدا نشد"; exit 1; }
+          echo "dir=$(dirname "$P")" >> "$GITHUB_OUTPUT"
+      - uses: subosito/flutter-action@v2
+        with: { channel: stable, cache: true }
+      - name: Generate Windows project
+        working-directory: ${{ steps.src.outputs.dir }}
+        run: |
+          flutter create . --platforms=windows --org ir.banzel --project-name banzel_app
+          cp app_src/main.dart lib/main.dart
+          # رفع خطای STL1011 در افزونه webview_windows با کامپایلر جدید
+          sed -i '0,/^project(/s//add_definitions(-D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS)\nproject(/' windows/CMakeLists.txt
+      - name: Build Windows
+        working-directory: ${{ steps.src.outputs.dir }}
+        env:
+          CL: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
+        run: |
+          flutter pub get
+          flutter build windows --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-app
+          path: ${{ steps.src.outputs.dir }}/build/windows/x64/runner/Release
